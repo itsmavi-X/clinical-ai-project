@@ -1,0 +1,125 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  * {
+    box-sizing: border-box;
+  }
+
+  html {
+    scroll-behavior: smooth;
+  }
+
+  body {
+    background-color: #0a0f1e;
+    color: #e2e8f0;
+    font-family: 'DM Sans', sans-serif;
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  ::selection {
+    background-color: rgba(56, 189, 248, 0.3);
+    color: #f0f9ff;
+  }
+}
+
+@layer components {
+  .glass-card {
+    background: rgba(15, 23, 42, 0.7);
+    backdrop-filter: blur(20px);
+    -webkit-backdrop-filter: blur(20px);
+    border: 1px solid rgba(148, 163, 184, 0.1);
+  }
+
+  .glass-card-hover {
+    transition: all 0.3s ease;
+  }
+
+  .glass-card-hover:hover {
+    background: rgba(15, 23, 42, 0.85);
+    border-color: rgba(148, 163, 184, 0.2);
+    transform: translateY(-2px);
+    box-shadow: 0 20px 40px rgba(0, 0, 0, 0.4);
+  }
+
+  .glow-cyan {
+    box-shadow: 0 0 20px rgba(34, 211, 238, 0.15), 0 0 40px rgba(34, 211, 238, 0.05);
+  }
+
+  .glow-red {
+    box-shadow: 0 0 20px rgba(248, 113, 113, 0.2), 0 0 40px rgba(248, 113, 113, 0.08);
+  }
+
+  .glow-amber {
+    box-shadow: 0 0 20px rgba(251, 191, 36, 0.2), 0 0 40px rgba(251, 191, 36, 0.08);
+  }
+
+  .glow-green {
+    box-shadow: 0 0 20px rgba(74, 222, 128, 0.2), 0 0 40px rgba(74, 222, 128, 0.08);
+  }
+
+  .severity-badge {
+    @apply inline-flex items-center px-3 py-1 rounded-full text-xs font-mono font-medium tracking-wider uppercase;
+  }
+
+  .input-field {
+    @apply w-full bg-slate-900/60 border border-slate-700/60 rounded-xl px-4 py-3 text-slate-100 placeholder-slate-500 
+           focus:outline-none focus:ring-2 focus:ring-cyan-500/40 focus:border-cyan-500/50 
+           transition-all duration-200 font-body text-sm;
+  }
+
+  .btn-primary {
+    @apply relative overflow-hidden bg-gradient-to-r from-cyan-500 to-blue-600 
+           text-white font-semibold py-3.5 px-8 rounded-xl
+           hover:from-cyan-400 hover:to-blue-500
+           disabled:opacity-50 disabled:cursor-not-allowed
+           transition-all duration-300 font-body tracking-wide text-sm
+           shadow-lg shadow-cyan-500/20;
+  }
+
+  .btn-secondary {
+    @apply bg-slate-800/60 border border-slate-700/60 text-slate-300 
+           font-medium py-2.5 px-5 rounded-xl hover:bg-slate-700/60 hover:text-slate-100
+           transition-all duration-200 font-body text-sm;
+  }
+}
+
+/* Background grid effect */
+.bg-grid {
+  background-image: 
+    linear-gradient(rgba(148, 163, 184, 0.03) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(148, 163, 184, 0.03) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 6px;
+}
+::-webkit-scrollbar-track {
+  background: rgba(15, 23, 42, 0.5);
+}
+::-webkit-scrollbar-thumb {
+  background: rgba(148, 163, 184, 0.2);
+  border-radius: 3px;
+}
+::-webkit-scrollbar-thumb:hover {
+  background: rgba(148, 163, 184, 0.4);
+}
+
+/* Loading pulse ring */
+.pulse-ring {
+  animation: pulseRing 1.5s ease-out infinite;
+}
+
+@keyframes pulseRing {
+  0% { transform: scale(0.8); opacity: 1; }
+  100% { transform: scale(1.4); opacity: 0; }
+}
+
+/* Confidence bar fill animation */
+.confidence-fill {
+  transition: width 1.2s cubic-bezier(0.25, 0.46, 0.45, 0.94);
+}

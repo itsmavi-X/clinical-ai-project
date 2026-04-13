@@ -1,0 +1,16 @@
+frontend/node_modules/
+backend/target/
+
+# IDE/editor files
+.vscode/
+.idea/
+*.iml
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Logs and env files
+*.log
+.env
+.env.*
