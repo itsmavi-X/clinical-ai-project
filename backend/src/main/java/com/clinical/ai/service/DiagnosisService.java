@@ -8,15 +8,16 @@ import com.fasterxml.jackson.databind.JsonNode;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import org.slf4j.Logger;
 import org.slf4j.LoggerFactory;
-import org.springframework.ai.chat.ChatClient;
-import org.springframework.ai.chat.messages.SystemMessage;
-import org.springframework.ai.chat.messages.UserMessage;
-import org.springframework.ai.chat.prompt.Prompt;
 import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.beans.factory.annotation.Value;
+import org.springframework.http.MediaType;
 import org.springframework.stereotype.Service;
+import org.springframework.web.reactive.function.client.WebClient;
+import reactor.core.publisher.Mono;
 
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Map;
 import java.util.stream.Collectors;
 
 @Service
@@ -25,34 +26,35 @@ public class DiagnosisService {
     private static final Logger logger = LoggerFactory.getLogger(DiagnosisService.class);
     private static final DateTimeFormatter FORMATTER = DateTimeFormatter.ofPattern("yyyy-MM-dd HH:mm:ss");
 
-    private final ChatClient chatClient;
     private final DiagnosisRepository diagnosisRepository;
     private final ObjectMapper objectMapper;
+    private final WebClient webClient;
+    private final String apiKey;
 
     @Autowired
-    public DiagnosisService(ChatClient chatClient,
-                            DiagnosisRepository diagnosisRepository,
-                            ObjectMapper objectMapper) {
-        this.chatClient = chatClient;
+    public DiagnosisService(DiagnosisRepository diagnosisRepository,
+                            ObjectMapper objectMapper,
+                            WebClient.Builder webClientBuilder,
+                            @Value("${gemini.api.key}") String apiKey) {
         this.diagnosisRepository = diagnosisRepository;
         this.objectMapper = objectMapper;
+        this.webClient = webClientBuilder.baseUrl("https://generativelanguage.googleapis.com").build();
+        this.apiKey = apiKey;
     }
 
     public AnalysisResponse analyzeSymptoms(AnalysisRequest request) {
         try {
-            Prompt prompt = new Prompt(List.of(
-                new SystemMessage(buildSystemPrompt()),
-                new UserMessage(buildUserPrompt(request))
-            ));
-
-            String aiResponse = chatClient.call(prompt)
-                .getResult()
-                .getOutput()
-                .getContent();
+            String prompt = buildPrompt(request);
+            String aiResponse = callGeminiAPI(prompt);
 
             logger.debug("AI Response: {}", aiResponse);
 
-            AnalysisResponse response = parseAiResponse(aiResponse);
+            AnalysisResponse response = new AnalysisResponse();
+            response.setDisease("AI Diagnosis");
+            response.setSeverity("MODERATE");
+            response.setRecommendation(aiResponse);
+            response.setConfidence(0.8);
+
             DiagnosisRecord record = saveRecord(request, response);
 
             response.setId(record.getId());
@@ -71,6 +73,49 @@ public class DiagnosisService {
         }
     }
 
+    private String callGeminiAPI(String prompt) {
+        Map<String, Object> requestBody = Map.of(
+            "contents", List.of(
+                Map.of("parts", List.of(Map.of("text", prompt)))
+            )
+        );
+
+        return webClient.post()
+            .uri("/v1beta/models/gemini-1.5-flash:generateContent?key=" + apiKey)
+            .contentType(MediaType.APPLICATION_JSON)
+            .bodyValue(requestBody)
+            .retrieve()
+            .bodyToMono(String.class)
+            .map(this::extractTextFromResponse)
+            .onErrorResume(e -> {
+                logger.error("Gemini API error", e);
+                return Mono.just("Error: Unable to get diagnosis from AI.");
+            })
+            .block();
+    }
+
+    private String extractTextFromResponse(String responseJson) {
+        try {
+            JsonNode json = objectMapper.readTree(responseJson);
+            return json.path("candidates").get(0).path("content").path("parts").get(0).path("text").asText();
+        } catch (Exception e) {
+            logger.error("Error parsing Gemini response", e);
+            return "Error: Unable to parse AI response.";
+        }
+    }
+
+    private String buildPrompt(AnalysisRequest request) {
+        StringBuilder sb = new StringBuilder("You are a medical assistant. Analyze the symptoms and suggest possible condition with precautions. Symptoms: ");
+        sb.append(request.getSymptoms());
+        if (request.getAge() != null) {
+            sb.append(" Age: ").append(request.getAge());
+        }
+        if (request.getDuration() != null && !request.getDuration().isBlank()) {
+            sb.append(" Duration: ").append(request.getDuration());
+        }
+        return sb.toString();
+    }
+
     public List<AnalysisResponse> getHistory() {
         return diagnosisRepository.findAllByOrderByCreatedAtDesc()
             .stream()
@@ -84,50 +129,6 @@ public class DiagnosisService {
             return true;
         }
         return false;
-    }
-
-    private String buildSystemPrompt() {
-        return """
-            You are a medical assistant AI. Analyze symptoms and return ONLY valid JSON.
-            No markdown, no explanation, just JSON in this exact format:
-            {
-              "disease": "Most likely condition name",
-              "severity": "MILD | MODERATE | SEVERE | CRITICAL",
-              "recommendation": "Detailed recommendation and next steps. Note: This is AI-generated, not a substitute for professional medical advice.",
-              "confidence": 0.0 to 1.0
-            }
-            Severity: MILD=home care, MODERATE=see doctor soon, SEVERE=urgent care, CRITICAL=emergency.
-            """;
-    }
-
-    private String buildUserPrompt(AnalysisRequest request) {
-        StringBuilder sb = new StringBuilder("Analyze these symptoms:\n");
-        sb.append("Symptoms: ").append(request.getSymptoms()).append("\n");
-        if (request.getAge() != null)
-            sb.append("Age: ").append(request.getAge()).append("\n");
-        if (request.getDuration() != null && !request.getDuration().isBlank())
-            sb.append("Duration: ").append(request.getDuration()).append("\n");
-        return sb.toString();
-    }
-
-    private AnalysisResponse parseAiResponse(String raw) throws Exception {
-        String clean = raw.trim()
-            .replaceAll("^```json\\s*", "")
-            .replaceAll("^```\\s*", "")
-            .replaceAll("\\s*```$", "")
-            .trim();
-
-        JsonNode json = objectMapper.readTree(clean);
-        AnalysisResponse r = new AnalysisResponse();
-        r.setDisease(json.path("disease").asText("Unknown Condition"));
-        r.setSeverity(json.path("severity").asText("MODERATE").toUpperCase());
-        r.setRecommendation(json.path("recommendation").asText("Please consult a doctor."));
-
-        double conf = json.path("confidence").asDouble(0.75);
-        if (conf > 1.0) conf = conf / 100.0;
-        r.setConfidence(Math.min(1.0, Math.max(0.0, conf)));
-
-        return r;
     }
 
     private DiagnosisRecord saveRecord(AnalysisRequest req, AnalysisResponse res) {
